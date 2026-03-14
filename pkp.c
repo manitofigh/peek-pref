@@ -28,8 +28,9 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
-#define PAGE_SIZE     1<<12 // base page, 4KiB
-#define HP_PAGE_SIZE  1<<21 // huge page, 2MiB
+#define UNUSED __attribute__((unused))
+#define PAGE_SIZE     (1<<12) // base page, 4KiB
+#define HP_PAGE_SIZE  (1<<21) // huge page, 2MiB
 
 #define ALWAYS_INLINE inline __always_inline
 // https://github.com/google/highwayhash/blob/master/highwayhash/tsc_timer.h
@@ -125,6 +126,11 @@ static ALWAYS_INLINE u8 *mmap_private(void *addr, size_t size) {
     return ptr;
 }
 
+static ALWAYS_INLINE void memory_barrier(void)
+{
+    __asm__ __volatile__("" ::: "memory"); // barrier
+}
+
 static ALWAYS_INLINE u8 *mmap_private_init(void *addr, size_t size, u8 init) {
     u8 *ptr = mmap_private(addr, size);
     if (ptr)
@@ -149,31 +155,41 @@ static ALWAYS_INLINE u8 *mmap_huge_private_init(void *addr, size_t size, u8 i)
     return ptr;
 }
 
+static u64 time_maccess(u8* p)
+{
+    u64 volatile UNUSED w = timer_warmup();
+    u64 t1 = timer_start();
+    maccess(p);
+    u64 t2 = timer_stop();
+    return t2-t1;
+}
+
 i32 main()
 {
-    //printf("Hello, world!\n");
+    //u8* volatile k_pages = mmap_private_init(NULL, PAGE_SIZE*2000, 'A'); // tlb eviction set
     //u8* bp = mmap_private_init(NULL, PAGE_SIZE*2, 'A');
+    //clflushopt_4k_page(bp+4096); // second page cache ev
+    _mfence();
+    // ^ evict the prev pages TLB?
     u8* hp = mmap_huge_private_init(NULL, HP_PAGE_SIZE, 'A');
+    if (!hp) {
+        printf("ERROR: No HP\n");
+        return -1;
+    }
+
     //printf("address of bp: %p\n", bp);
-    //clflushopt_4k_page(bp);
+    //clflushopt_4k_page(bp); // bring
     //clflushopt_4k_page(bp+4096);
     clflushopt_2m_page(hp);
-
-    __asm__ __volatile__("" ::: "memory"); // barrier
     _mfence();
-    for (u16 i = 0; i < 8; i++) {
-        //maccess(bp + 512 * i);
+
+    for (u16 i = 0; i < 7; i++) // train the stride prefetecher
         maccess(hp + 512 * i);
-        //printf("address: %p\n", bp + 512 * i);
-    }
-    _mfence(); 
-    //printf("hoping to have %p prefeteched!\n", bp + 512 * 7);
-    u64 volatile w = timer_warmup();
-    u64 t1 = timer_start();
-    //maccess(bp+512*8);
-    maccess(hp+512*8);
-    u64 t2 = timer_stop();
-    printf("%lu\n", t2-t1);
+
+    _mfence();
+
+    u64 t = time_maccess(hp+512*8);
+    printf("%lu\n", t);
 }
 
 // behaviors observations
