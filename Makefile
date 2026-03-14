@@ -1,5 +1,5 @@
 all:
-	gcc -O2 -o pkp ./pkp.c
+	gcc -O2 -o pkp -Wall ./pkp.c
 
 asm:
 	gcc -S -o pkp.asm pkp.c

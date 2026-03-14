@@ -1,12 +1,3 @@
-// [     4KiB     ]
-// ^   ^   ^   *
-// [           2MiB            ]
-// ^ ^ ^ ^ ^ ^ ^ ^] *
-// next page prefetecher? will that end up pulling in lines from the next page?
-// how many lines does the prefetecher fetch? how can we even test that ? 
-// ^^ not to only access the next possible line, but like e.g. 4 lines in advance
-// ^  ^  ^  ^           *|         |      \
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -20,17 +11,12 @@ typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-
-typedef int16_t i16;
 typedef int32_t i32;
-typedef int64_t i64;
-
-typedef float f32;
-typedef double f64;
 
 #define UNUSED __attribute__((unused))
 #define PAGE_SIZE     (1<<12) // base page, 4KiB
 #define HP_PAGE_SIZE  (1<<21) // huge page, 2MiB
+#define STRIDE        128     // bytes
 
 #define ALWAYS_INLINE inline __always_inline
 // https://github.com/google/highwayhash/blob/master/highwayhash/tsc_timer.h
@@ -126,11 +112,6 @@ static ALWAYS_INLINE u8 *mmap_private(void *addr, size_t size) {
     return ptr;
 }
 
-static ALWAYS_INLINE void memory_barrier(void)
-{
-    __asm__ __volatile__("" ::: "memory"); // barrier
-}
-
 static ALWAYS_INLINE u8 *mmap_private_init(void *addr, size_t size, u8 init) {
     u8 *ptr = mmap_private(addr, size);
     if (ptr)
@@ -183,14 +164,11 @@ i32 main()
     clflushopt_2m_page(hp);
     _mfence();
 
-    for (u16 i = 0; i < 7; i++) // train the stride prefetecher
-        maccess(hp + 512 * i);
+    for (u16 i = 0; i < 5; i++) // train the stride prefetecher
+        maccess(hp + STRIDE * i);
 
     _mfence();
 
-    u64 t = time_maccess(hp+512*8);
+    u64 t = time_maccess(hp+STRIDE*6);
     printf("%lu\n", t);
 }
-
-// behaviors observations
-//
