@@ -17,6 +17,7 @@ typedef int32_t i32;
 #define PAGE_SIZE     (1<<12) // base page, 4KiB
 #define HP_PAGE_SIZE  (1<<21) // huge page, 2MiB
 #define STRIDE        128     // bytes
+#define N_TRAIN       5       // rounds of training the prefetcher
 
 #define ALWAYS_INLINE inline __always_inline
 // https://github.com/google/highwayhash/blob/master/highwayhash/tsc_timer.h
@@ -164,11 +165,11 @@ i32 main()
     clflushopt_2m_page(hp);
     _mfence();
 
-    for (u16 i = 0; i < 5; i++) // train the stride prefetecher
+    for (u16 i = 0; i < N_TRAIN; i++) // train the stride prefetecher
         maccess(hp + STRIDE * i);
 
     _mfence();
 
-    u64 t = time_maccess(hp+STRIDE*6);
-    printf("%lu\n", t);
+    u64 t = time_maccess(hp+STRIDE*(N_TRAIN+1));
+    printf("cycles: %lu\n", t);
 }
