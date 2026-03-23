@@ -13,11 +13,12 @@ typedef uint32_t u32;
 typedef uint64_t u64;
 typedef int32_t i32;
 
-#define UNUSED __attribute__((unused))
-#define PAGE_SIZE     (1<<12) // base page, 4KiB
-#define HP_PAGE_SIZE  (1<<21) // huge page, 2MiB
-#define STRIDE        128     // bytes
-#define N_TRAIN       5       // rounds of training the prefetcher
+#define UNUSED           __attribute__((unused))
+#define PAGE_SIZE        (1<<12) // base page, 4KiB
+#define HP_PAGE_SIZE     (1<<21) // huge page, 2MiB
+#define STRIDE           600     // bytes
+#define N_TRAIN          6       // rounds of training the prefetcher
+#define BASE_PAGE_METHOD 0       // 1 for base page, 0 for huge
 
 #define ALWAYS_INLINE inline __always_inline
 // https://github.com/google/highwayhash/blob/master/highwayhash/tsc_timer.h
@@ -148,28 +149,40 @@ static u64 time_maccess(u8* p)
 
 i32 main()
 {
+
+#if BASE_PAGE_METHOD
     //u8* volatile k_pages = mmap_private_init(NULL, PAGE_SIZE*2000, 'A'); // tlb eviction set
-    //u8* bp = mmap_private_init(NULL, PAGE_SIZE*2, 'A');
-    //clflushopt_4k_page(bp+4096); // second page cache ev
-    _mfence();
-    // ^ evict the prev pages TLB?
-    u8* hp = mmap_huge_private_init(NULL, HP_PAGE_SIZE, 'A');
-    if (!hp) {
+    u8* p = mmap_private_init(NULL, PAGE_SIZE*2, 'A');
+    if (!p) {
+        printf("ERROR: No BP\n");
+        return -1;
+    }
+    clflushopt_4k_page(p+4096); // second page
+    //printf("address of bp: %p\n", p);
+    clflushopt_4k_page(p); // flush first page
+    clflushopt_4k_page(p+4096); // second page
+#else
+    u8* p = mmap_huge_private_init(NULL, HP_PAGE_SIZE, 'A');
+    if (!p) {
         printf("ERROR: No HP\n");
         return -1;
     }
 
-    //printf("address of bp: %p\n", bp);
-    //clflushopt_4k_page(bp); // bring
-    //clflushopt_4k_page(bp+4096);
-    clflushopt_2m_page(hp);
+    //printf("address of HP: %p\n", p);
+    clflushopt_2m_page(p); // flush huge page
     _mfence();
+#endif
 
+    //u64 start = timer_start();
     for (u16 i = 0; i < N_TRAIN; i++) // train the stride prefetecher
-        maccess(hp + STRIDE * i);
+        maccess(p + STRIDE * i);
 
     _mfence();
 
-    u64 t = time_maccess(hp+STRIDE*(N_TRAIN+1));
-    printf("cycles: %lu\n", t);
+    u64 t = time_maccess(p+STRIDE*(N_TRAIN+5));
+    
+    //u64 stop = timer_stop();
+    //printf("detection takes (cycles) %lu\n", stop - start);
+    printf("%lu\n", t);
+    printf("%s\n", t > 100 ? "base" : "huge" );
 }
