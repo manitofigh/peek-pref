@@ -16,9 +16,18 @@ typedef int32_t i32;
 #define UNUSED           __attribute__((unused))
 #define PAGE_SIZE        (1<<12) // base page, 4KiB
 #define HP_PAGE_SIZE     (1<<21) // huge page, 2MiB
-#define STRIDE           600     // bytes
+#define STRIDE           128     // bytes
 #define N_TRAIN          6       // rounds of training the prefetcher
-#define BASE_PAGE_METHOD 0       // 1 for base page, 0 for huge
+#define USE_BASE_PAGES   1       // 1 for base page, 0 for huge
+
+#define N_JUMP           1
+// ^^
+/* the multiple of the stride to try access to see if it's been cached */
+/* for example, if we have accessed 5 items at 100 byte stride and we'd like */
+/* to see if the line at byte 600 (100 bytes from the latest access) is */
+/* cached, N_JUMP would be 1 (1 * 100 = 100). If we'd like to see if it has  */
+/* cached 200 bytes from where we most recently accessed, N_JUMP would  */
+/* be 2, and so on. */
 
 #define ALWAYS_INLINE inline __always_inline
 // https://github.com/google/highwayhash/blob/master/highwayhash/tsc_timer.h
@@ -149,8 +158,24 @@ static u64 time_maccess(u8* p)
 
 i32 main()
 {
+ 
+    printf("Num train: %d\n"
+           "Stride: %d\n"
+           "N_JUMP: %d\n"
+           "Method: %s\n",
 
-#if BASE_PAGE_METHOD
+           N_TRAIN,
+           STRIDE,
+           N_JUMP,
+           USE_BASE_PAGES ? "Base page\n" : "Huge pages\n");
+
+    printf("Last train access (bytes): %d\n", STRIDE * N_TRAIN);
+    printf("Next access (bytes): %d\n\n", STRIDE * (N_TRAIN + N_JUMP));
+    printf("Cross page? %s\n\n", (STRIDE * (N_TRAIN + N_JUMP) > PAGE_SIZE) ? "Yes" : "No");
+                                                             
+
+
+#if USE_BASE_PAGES
     //u8* volatile k_pages = mmap_private_init(NULL, PAGE_SIZE*2000, 'A'); // tlb eviction set
     u8* p = mmap_private_init(NULL, PAGE_SIZE*2, 'A');
     if (!p) {
@@ -163,7 +188,8 @@ i32 main()
     clflushopt_4k_page(p+4096); // second page
 #else
     u8* p = mmap_huge_private_init(NULL, HP_PAGE_SIZE, 'A');
-    if (!p) {
+    if (!p)
+    {
         printf("ERROR: No HP\n");
         return -1;
     }
@@ -172,17 +198,16 @@ i32 main()
     clflushopt_2m_page(p); // flush huge page
     _mfence();
 #endif
-
     //u64 start = timer_start();
     for (u16 i = 0; i < N_TRAIN; i++) // train the stride prefetecher
         maccess(p + STRIDE * i);
 
     _mfence();
 
-    u64 t = time_maccess(p+STRIDE*(N_TRAIN+5));
+    u64 t = time_maccess(p + STRIDE * (N_TRAIN + N_JUMP));
     
     //u64 stop = timer_stop();
     //printf("detection takes (cycles) %lu\n", stop - start);
-    printf("%lu\n", t);
-    printf("%s\n", t > 100 ? "base" : "huge" );
+    printf("Lat (cycles): %lu\n", t);
+    //printf("%s\n", t > 100 ? "base" : "huge" );
 }
