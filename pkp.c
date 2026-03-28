@@ -14,8 +14,8 @@ typedef uint64_t u64;
 typedef int32_t i32;
 
 #define UNUSED           __attribute__((unused))
-#define PAGE_SIZE        (1<<12) // base page, 4KiB
-#define HP_PAGE_SIZE     (1<<21) // huge page, 2MiB
+#define PAGE_SIZE        (1<<12) // base, 4KiB
+#define HP_PAGE_SIZE     (1<<21) // hugepage, 2MiB
 #define STRIDE           128     // bytes
 #define N_TRAIN          6       // rounds of training the prefetcher
 #define USE_BASE_PAGES   1       // 1 for base page, 0 for huge
